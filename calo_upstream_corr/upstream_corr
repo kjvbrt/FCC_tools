@@ -1,0 +1,167 @@
+#!/usr/bin/env python
+import yaml
+from argparse import ArgumentParser
+from sys import exit
+from os import path
+from utils import set_ranges, plot, count_bins_with_error, get_n_bins_to_join
+
+
+def main():
+    '''
+    Calculate upstream correction parameters P00, P01, P10, P11.
+    '''
+
+    parser = ArgumentParser(description='Yay, calculate upstream parameters!')
+    parser.add_argument('-n', '--hist-name', type=str,
+                        default='upstreamEnergy_presamplerEnergy_',
+                        help='Histogram base name')
+    parser.add_argument('-l', '--layer-id', type=int, default=0,
+                        help='ID of the first calorimeter layer')
+    parser.add_argument('-r', '--rebin', action='store_true', default=False,
+                        help='Rebin x axis')
+
+    required_arguments = parser.add_argument_group('required arguments')
+    required_arguments.add_argument('-i', '--input-file',
+                                    type=str, required=True,
+                                    help='Input file path')
+    args = parser.parse_args()
+
+    try:
+        with open(args.input_file) as file:
+            input_dict = yaml.full_load(file)
+    except FileNotFoundError:
+        print("ERROR: Input YAML file not found!")
+        exit(1)
+
+    try:
+        n_evnt = input_dict["n_evnt"]
+    except KeyError:
+        print("ERROR: Number of events not found, aborting!")
+        exit(1)
+
+    from ROOT import TGraphErrors, TFile, TF1
+
+    graph_p0 = TGraphErrors()
+    graph_p0.SetName('graph_p0')
+    graph_p1 = TGraphErrors()
+    graph_p1.SetName('graph_p1')
+
+    graph_p0.SetTitle(';E_{cluster} [GeV];P_{0}')
+    graph_p1.SetTitle(';E_{cluster} [GeV];P_{1}')
+
+    for file_index, f in enumerate(input_dict["files"]):
+        try:
+            file_path = f["path"]
+        except KeyError:
+            print("WARNING: File path not found, ignoring file!")
+            print("         file index: ", file_index)
+            continue
+        try:
+            file_energy = f["energy"]
+        except KeyError:
+            print("WARNING: File energy not found, ignoring file!")
+            print("         file index: ", file_index)
+            continue
+
+        if not path.isfile(file_path):
+            print("WARNING: Input ROOT file not found, ignoring file!")
+            print("         " + file_path)
+            continue
+
+        print("INFO: Fitting file at energy", int(file_energy), 'GeV')
+        print("      " + file_path)
+
+        infile = TFile(file_path, "READ")
+        hist = infile.Get(args.hist_name + str(args.layer_id))
+        try:
+            hist.SetDirectory(0)
+        except AttributeError:
+            print('WARNING: Histogram not found, ignoring histogram!')
+            print('         file path:', file_path)
+            print('         histogram name:',
+                  args.hist_name + str(args.layer_id))
+            continue
+        infile.Close()
+
+        set_ranges(hist)
+
+        if args.rebin:
+            hist.RebinX(get_n_bins_to_join(hist, n_evnt))
+
+        set_ranges(hist, 'plot')
+
+        hist.GetXaxis().SetTitle(
+                'Energy in layer (id: %i) [GeV]' % (args.layer_id))
+        hist.GetYaxis().SetTitle('Upstream energy [GeV]')
+        hist.SetTitle('')
+
+        plot(hist, 'hist_upstream_vs_first_layer_%iGeV' % int(file_energy))
+
+        profile = hist.ProfileX('profile_x')
+        profile.GetYaxis().SetTitle('Mean upstream energy [GeV]')
+
+        if count_bins_with_error(profile) < 3:
+            print('WARNING: Number of non empty bins too small, ' +
+                  'ignoring histogram!')
+            continue
+
+        func_from = hist.GetXaxis().GetBinLowEdge(hist.GetXaxis().GetFirst())
+        func_to = hist.GetXaxis().GetBinUpEdge(hist.GetXaxis().GetLast())
+        func = TF1("func", "pol1", func_from, func_to)
+
+        result = profile.Fit(func, 'SR')
+
+        plot(profile,
+             'profile_upstream_vs_first_layer_%iGeV' % int(file_energy))
+
+        graph_p0.SetPoint(file_index, file_energy, result.Get().Parameter(0))
+        graph_p0.SetPointError(file_index, 0., result.Get().Error(0))
+
+        graph_p1.SetPoint(file_index, file_energy, result.Get().Parameter(1))
+        graph_p1.SetPointError(file_index, 0., result.Get().Error(1))
+
+    if (graph_p0.GetN() < 3):
+        print('WARNING: Number of energy values too small, ignoring final ' +
+              'plots!')
+        exit(0)
+    if (graph_p1.GetN() < 3):
+        print('WARNING: Number of energy values too small, ignoring final ' +
+              'plots!')
+        exit(0)
+
+    func_p0 = TF1("func_p0", "pol1",
+                  graph_p0.GetPointX(0),
+                  graph_p0.GetPointX(graph_p0.GetN() - 1))
+    result_p0 = graph_p0.Fit(func_p0, "SR")
+
+    func_p1 = TF1("func_p1", "[0]+[1]/sqrt(x)",
+                  graph_p0.GetPointX(0),
+                  graph_p0.GetPointX(graph_p0.GetN() - 1))
+    result_p1 = graph_p1.Fit(func_p1, 'SR')
+
+    plot(graph_p0, 'graph_upstream_corr_param0')
+    plot(graph_p1, 'graph_upstream_corr_param1')
+
+    print('INFO: P0 parameters:')
+    print('      P00 = %.3g' % result_p0.Get().Parameter(0) +
+          ' +/- %.3g' % result_p0.Get().Error(0) +
+          ' (%.2g%%)' % abs(100 * result_p0.Get().Error(0) /
+                            result_p0.Get().Parameter(0)))
+    print('      P01 = %.3g' % result_p0.Get().Parameter(1) +
+          ' +/- %.3g' % result_p0.Get().Error(1) +
+          ' (%.2g%%)' % abs(100 * result_p0.Get().Error(1) /
+                            result_p0.Get().Parameter(1)))
+
+    print('INFO: P1 parameters:')
+    print('      P10 = %.3g' % result_p1.Get().Parameter(0) +
+          ' +/- %.3g' % result_p1.Get().Error(0) +
+          ' (%.2g%%)' % abs(100 * result_p1.Get().Error(0) /
+                            result_p1.Get().Parameter(0)))
+    print('      P11 = %.3g' % result_p1.Get().Parameter(1) +
+          ' +/- %.3g' % result_p1.Get().Error(1) +
+          ' (%.2g%%)' % abs(100 * result_p1.Get().Error(1) /
+                            result_p1.Get().Parameter(1)))
+
+
+if __name__ == '__main__':
+    main()

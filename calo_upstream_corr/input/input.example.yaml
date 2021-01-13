@@ -1,0 +1,31 @@
+---
+n_evnt: 2000
+files:
+  # - path: "input/2000/histUpstream_fccee_hits_5GeV.root"
+  #   energy: 5
+  - path: "input/2000/histUpstream_fccee_hits_10GeV.root"
+    energy: 10
+  - path: "input/2000/histUpstream_fccee_hits_15GeV.root"
+    energy: 15
+  - path: "input/2000/histUpstream_fccee_hits_20GeV.root"
+    energy: 20
+  - path: "input/2000/histUpstream_fccee_hits_30GeV.root"
+    energy: 30
+  - path: "input/2000/histUpstream_fccee_hits_50GeV.root"
+    energy: 50
+  - path: "input/2000/histUpstream_fccee_hits_80GeV.root"
+    energy: 80
+  - path: "input/2000/histUpstream_fccee_hits_100GeV.root"
+    energy: 100
+  - path: "input/2000/histUpstream_fccee_hits_120GeV.root"
+    energy: 120
+  - path: "input/2000/histUpstream_fccee_hits_150GeV.root"
+    energy: 150
+  - path: "input/2000/histUpstream_fccee_hits_170GeV.root"
+    energy: 170
+  - path: "input/2000/histUpstream_fccee_hits_200GeV.root"
+    energy: 200
+  - path: "input/2000/histUpstream_fccee_hits_250GeV.root"
+    energy: 250
+  - path: "input/2000/histUpstream_fccee_hits_300GeV.root"
+    energy: 300
