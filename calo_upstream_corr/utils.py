@@ -1,73 +1,4 @@
-#!/usr/bin/env python
-
-def set_ranges(hist, param=''):
-    x_bin_max = 1
-    x_bin_min = hist.GetNbinsX()
-    y_bin_max = 1
-    y_bin_min = hist.GetNbinsY()
-    print('n_bin_y: ', y_bin_min)
-
-    for i in range(1, hist.GetNbinsX() + 1):
-        for j in range(1, hist.GetNbinsY() + 1):
-            val = hist.GetBinContent(i, j)
-            err = hist.GetBinError(i, j)
-
-            if val == 0 and err == 0:
-                continue
-
-            if i < x_bin_min:
-                x_bin_min = i
-            if i > x_bin_max:
-                x_bin_max = i
-
-            if j < y_bin_min:
-                y_bin_min = j
-            if j > y_bin_max:
-                y_bin_max = j
-
-    if param == 'plot':
-        x_width = (x_bin_max - x_bin_min) / 2
-        x_bin_min = int(x_bin_min - x_width)
-        if x_bin_min < 1:
-            x_bin_min = 1
-        x_bin_max = int(x_bin_max + x_width)
-        if x_bin_max > hist.GetNbinsX():
-            x_bin_max = hist.GetNbinsX()
-
-        y_width = (y_bin_max - y_bin_min) / 2
-        y_bin_min = int(y_bin_min - y_width)
-        if y_bin_min < 1:
-            y_bin_min = 1
-        y_bin_max = int(y_bin_max + y_width)
-        if y_bin_max > hist.GetNbinsX():
-            y_bin_max = hist.GetNbinsX()
-
-    print('y_bin_max: ', y_bin_max)
-
-    hist.GetXaxis().SetRange(x_bin_min, x_bin_max)
-    hist.GetYaxis().SetRange(y_bin_min, y_bin_max)
-
-
-def get_n_bins_to_join(hist, n_evnt):
-    from math import sqrt
-
-    bin_min = hist.GetXaxis().GetFirst()
-    bin_max = hist.GetYaxis().GetLast()
-
-    width = bin_max - bin_min
-
-    diff_min = 1e9
-    n_bins_min = 1
-    for i in range(1, 30):
-        diff = abs((width/i) - sqrt(n_evnt))
-        if diff < diff_min:
-            diff_min = diff
-            n_bins_min = i
-
-    print('INFO: Optimal number of bins to join: ', n_bins_min)
-
-    return 4
-    # return n_bins_min
+from ROOT import gPad, gStyle, TCanvas
 
 
 def count_bins_with_error(hist):
@@ -82,7 +13,6 @@ def count_bins_with_error(hist):
 
 
 def plot(obj, plot_name):
-    from ROOT import gPad, gStyle, TCanvas
 
     canvas = TCanvas("canvas", "Canvas", 450, 450)
     gPad.SetLeftMargin(.13)
