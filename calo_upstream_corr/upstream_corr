@@ -162,9 +162,12 @@ def main():
                       graph_p0.GetPointX(graph_p0.GetN() - 1))
         result_p0 = graph_p0.Fit(func_p0, "SR")
 
-        func_p1 = TF1("func_p1", "[0]+[1]/sqrt(x)",
-                      graph_p0.GetPointX(0),
-                      graph_p0.GetPointX(graph_p0.GetN() - 1))
+        # func_p1 = TF1("func_p1", "[0]+[1]/sqrt(x)",
+        #               graph_p1.GetPointX(0),
+        #               graph_p1.GetPointX(graph_p1.GetN() - 1))
+        func_p1 = TF1("func_p1", "pol1",
+                      graph_p1.GetPointX(0),
+                      graph_p1.GetPointX(graph_p1.GetN() - 1))
         result_p1 = graph_p1.Fit(func_p1, 'SR')
 
         plot(graph_p0, 'graph_upstream_corr_param0')
