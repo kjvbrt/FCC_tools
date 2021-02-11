@@ -17,6 +17,8 @@ def main():
                         help='Histogram base name')
     parser.add_argument('-l', '--layer-id', type=int, default=0,
                         help='ID of the first calorimeter layer')
+    parser.add_argument('--note', action='append', default=[],
+                        type=str, help='Note to be displayed in the plot')
     parser.add_argument('--rebin-factor', action='append', type=int,
                         default=[],
                         help='Number of bins to be merged')
@@ -106,7 +108,7 @@ def main():
             hist.Rebin(args.rebin_factor[args.rebin_index.index(file_index)])
 
         plot(hist, 'hist_upstream_vs_first_layer_%ideg_%iGeV' %
-             (int(file_theta), int(file_energy)))
+             (int(file_theta), int(file_energy)), args.note)
 
         profile = hist.ProfileX('profile_x')
         profile.GetYaxis().SetTitle('Mean upstream energy [GeV]')
@@ -124,7 +126,8 @@ def main():
 
         plot(profile,
              'profile_upstream_vs_first_layer_%ideg_%iGeV' %
-             (int(file_theta), int(file_energy)))
+             (int(file_theta), int(file_energy)),
+             args.note)
 
         if args.theta:
             graph_p0.SetPoint(file_index, file_theta,
@@ -153,8 +156,8 @@ def main():
         exit(0)
 
     if args.theta:
-        plot(graph_p0, 'graph_upstream_corr_theta_param0')
-        plot(graph_p1, 'graph_upstream_corr_theta_param1')
+        plot(graph_p0, 'graph_upstream_corr_theta_param0', args.note)
+        plot(graph_p1, 'graph_upstream_corr_theta_param1', args.note)
 
     else:
         func_p0 = TF1("func_p0", "pol1",
@@ -170,8 +173,8 @@ def main():
                       graph_p1.GetPointX(graph_p1.GetN() - 1))
         result_p1 = graph_p1.Fit(func_p1, 'SR')
 
-        plot(graph_p0, 'graph_upstream_corr_param0')
-        plot(graph_p1, 'graph_upstream_corr_param1')
+        plot(graph_p0, 'graph_upstream_corr_param0', args.note)
+        plot(graph_p1, 'graph_upstream_corr_param1', args.note)
 
         print('INFO: P0 parameters:')
         print('      P00 = %.3g' % result_p0.Get().Parameter(0) +

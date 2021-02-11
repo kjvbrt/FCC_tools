@@ -1,4 +1,4 @@
-from ROOT import gPad, gStyle, TCanvas
+from ROOT import gPad, gStyle, TCanvas, TPaveText
 
 
 def count_bins_with_error(hist):
@@ -12,7 +12,7 @@ def count_bins_with_error(hist):
     return num
 
 
-def plot(obj, plot_name):
+def plot(obj, plot_name, plot_notes=[]):
 
     canvas = TCanvas("canvas", "Canvas", 450, 450)
     gPad.SetLeftMargin(.13)
@@ -51,5 +51,16 @@ def plot(obj, plot_name):
         obj.SetMarkerSize(.7)
         obj.SetMarkerStyle(21)
 
+    note = TPaveText(.2, .7, .5, .9, "brNDC")
+    note.SetFillStyle(0)
+    note.SetFillColor(0)
+    note.SetBorderSize(0)
+    note.SetTextColor(1)
+    note.SetTextFont(42)
+    note.SetTextAlign(11)
+    for note_text in plot_notes:
+        note.AddText(note_text)
+
     obj.Draw(draw_options)
+    note.Draw()
     canvas.Print('output/' + plot_name + '.pdf')
