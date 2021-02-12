@@ -1,0 +1,137 @@
+#!/usr/bin/env python
+from argparse import ArgumentParser
+from sys import exit
+
+
+def get_histogram(filepath, histname):
+    from ROOT import TFile
+
+    infile = TFile(filepath, "READ")
+    hist = infile.Get(histname)
+    try:
+        hist.SetDirectory(0)
+    except AttributeError:
+        print('WARNING: Histogram not found!')
+        print('         file path:', filepath)
+        print('         histogram name:', histname)
+        exit(1)
+    infile.Close()
+
+    hist.Print()
+
+    return hist
+
+
+def fit_histogram(hist):
+    from ROOT import TF1
+
+    min_val = hist.GetBinLowEdge(1)
+    max_val = (hist.GetBinLowEdge(hist.GetNbinsX()) +
+               hist.GetBinWidth(hist.GetNbinsX()))
+
+    print(min_val)
+    print(max_val)
+
+    func = TF1('func', 'gaus', min_val, max_val)
+
+    hist.Fit(func, 'SR')
+
+
+def main():
+    '''
+    Energy deposits in Calorimeter and also in cryostat
+    '''
+
+    parser = ArgumentParser(description='Yay, energy deposits!')
+    parser.add_argument('-n', '--hist-name', type=str,
+                        default='sumEinLayers',
+                        help='Histogram name')
+    parser.add_argument('-o', '--output-file', type=str,
+                        default='energy_deposits',
+                        help='Output file name')
+
+    required_arguments = parser.add_argument_group('required arguments')
+    required_arguments.add_argument('-i', '--input-file',
+                                    type=str, required=True,
+                                    help='Input file path')
+    args = parser.parse_args()
+
+    from ROOT import gStyle, TCanvas, TPaveText
+    gStyle.SetOptStat(10)
+    gStyle.SetOptFit(1)
+    canvas = TCanvas('canvas', 'Canvas', 350, 350)
+
+    note = TPaveText(.3, .7, .5, .85, "brNDC")
+    note.SetFillStyle(0)
+    note.SetFillColor(0)
+    note.SetBorderSize(0)
+    note.SetTextColor(1)
+    note.SetTextFont(42)
+    note.SetTextAlign(11)
+    note.AddText('FCC-ee')
+    note.AddText('e^{--}, 50 GeV')
+    note.AddText('#theta = #pi/2')
+
+    sumEinLayers = get_histogram(args.input_file, 'sumEinLayers')
+
+    sumEinLayers.Rebin(4)
+
+    fit_histogram(sumEinLayers)
+
+    sumEinLayers.Draw()
+    note.Draw()
+    canvas.Print('sumEinLayers.pdf')
+
+    ###
+    energyInCryo = get_histogram(args.input_file, 'energyInCryo')
+    energyInCryo.Rebin(4)
+    fit_histogram(energyInCryo)
+    energyInCryo.Draw()
+    note.Draw()
+    canvas.Print('energyInCryo.pdf')
+
+    ###
+    energyInCryoFront = get_histogram(args.input_file, 'energyInCryoFront')
+    energyInCryoFront.Rebin(4)
+    fit_histogram(energyInCryoFront)
+    energyInCryoFront.Draw()
+    note.Draw()
+    canvas.Print('energyInCryoFront.pdf')
+
+    ###
+    energyInCryoBack = get_histogram(args.input_file, 'energyInCryoBack')
+    energyInCryoBack.Rebin(4)
+    fit_histogram(energyInCryoBack)
+    energyInCryoBack.Draw()
+    note.Draw()
+    canvas.Print('energyInCryoBack.pdf')
+
+    ###
+    energyInCryoSides = get_histogram(args.input_file, 'energyInCryoSides')
+    energyInCryoSides.Rebin(4)
+    # fit_histogram(energyInCryoSides)
+    energyInCryoSides.Draw()
+    note.Draw()
+    canvas.Print('energyInCryoSides.pdf')
+
+    ###
+    energyInCryoLArBathFront = get_histogram(args.input_file,
+                                             'energyInCryoLArBathFront')
+    energyInCryoLArBathFront.Rebin(4)
+    fit_histogram(energyInCryoLArBathFront)
+    energyInCryoLArBathFront.Draw()
+    note.Draw()
+    canvas.Print('energyInCryoLArBathFront.pdf')
+
+    ###
+    energyInCryoLArBathBack = get_histogram(args.input_file,
+                                            'energyInCryoLArBathBack')
+    energyInCryoLArBathBack.Rebin(4)
+    # fit_histogram(energyInCryoLArBathBack)
+    energyInCryoLArBathBack.Draw()
+    note.Draw()
+    canvas.Print('energyInCryoLArBathBack.pdf')
+
+
+if __name__ == '__main__':
+    main()
