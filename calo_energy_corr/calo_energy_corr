@@ -13,9 +13,12 @@ def main():
 
     parser = ArgumentParser(description='Yay, calculate upstream parameters!')
     parser.add_argument('-n', '--hist-name', type=str,
-                        default='upstreamEnergy_presamplerEnergy_',
                         help='Histogram base name')
-    parser.add_argument('-l', '--layer-id', type=int, default=0,
+    parser.add_argument('-u', '--upstream-corr', action='store_true',
+                        default=False, help='Calculate upstream correction')
+    parser.add_argument('-d', '--downstream-corr', action='store_true',
+                        default=False, help='Calculate downstream correction')
+    parser.add_argument('-l', '--layer-id', type=int,
                         help='ID of the first calorimeter layer')
     parser.add_argument('--note', action='append', default=[],
                         type=str, help='Note to be displayed in the plot')
@@ -34,8 +37,26 @@ def main():
                                     help='Input file path')
     args = parser.parse_args()
 
+    if args.upstream_corr == args.downstream_corr:
+        print('ERROR: Correction type not selected!')
+        print('       Options: -u, --upstream_corr')
+        print('                -d, --downstream_corr')
+        exit(1)
+
     if args.rebin_index and len(args.rebin_factor) != len(args.rebin_index):
         print("ERROR: Rebin indexes and factors does not match")
+
+    if not args.layer_id:
+        if args.upstream_corr:
+            args.layer_id = 0
+        else:
+            args.layer_id = 7
+
+    if not args.hist_name:
+        if args.upstream_corr:
+            args.hist_name = 'upstreamEnergy_presamplerEnergy_'
+        else:
+            args.hist_name = 'downstreamEnergy_energyInLayer_'
 
     try:
         with open(args.input_file) as file:
@@ -50,13 +71,17 @@ def main():
     graph_p0.SetName('graph_p0')
     graph_p1 = TGraphErrors()
     graph_p1.SetName('graph_p1')
+    graph_chi2 = TGraphErrors()
+    graph_chi2.SetName('graph_chi2')
 
     if args.theta:
         graph_p0.SetTitle(';#theta [deg];P_{0}')
         graph_p1.SetTitle(';#theta [deg];P_{1}')
+        graph_chi2.SetTitle(';#theta [deg];#Chi^{2}/NDF')
     else:
         graph_p0.SetTitle(';E_{cluster} [GeV];P_{0}')
         graph_p1.SetTitle(';E_{cluster} [GeV];P_{1}')
+        graph_chi2.SetTitle(';E_{cluster} [GeV];#Chi^{2}/NDF')
 
     for file_index, file_dict in enumerate(input_dict["files"]):
         try:
@@ -99,35 +124,38 @@ def main():
             exit(1)
         infile.Close()
 
-        hist.GetXaxis().SetTitle(
-                'Energy in layer (id: %i) [GeV]' % (args.layer_id))
-        hist.GetYaxis().SetTitle('Upstream energy [GeV]')
         hist.SetTitle('')
 
         if file_index in args.rebin_index:
             hist.Rebin(args.rebin_factor[args.rebin_index.index(file_index)])
 
-        plot(hist, 'hist_upstream_vs_first_layer_%ideg_%iGeV' %
-             (int(file_theta), int(file_energy)), args.note)
+        if args.upstream_corr:
+            plotname = 'upstream_vs_layer'
+        else:
+            plotname = 'downstream_vs_layer'
+        plotname += '_%i_%ideg_%iGeV' % (args.layer_id,
+                                         int(file_theta),
+                                         int(file_energy))
+
+        plot(hist, 'hist_' + plotname, args.note)
 
         profile = hist.ProfileX('profile_x')
-        profile.GetYaxis().SetTitle('Mean upstream energy [GeV]')
+        profile.GetYaxis().SetTitle('Mean ' + hist.GetYaxis().GetTitle())
 
         if count_bins_with_error(profile) < 3:
             print('WARNING: Number of non empty bins too small, ' +
                   'ignoring histogram!')
             continue
 
+        # func_from = hist.GetXaxis().GetBinLowEdge(hist.GetXaxis().GetFirst() + 5)
+        # func_to = hist.GetXaxis().GetBinUpEdge(hist.GetXaxis().GetLast() - 10)
         func_from = hist.GetXaxis().GetBinLowEdge(hist.GetXaxis().GetFirst())
         func_to = hist.GetXaxis().GetBinUpEdge(hist.GetXaxis().GetLast())
-        func = TF1("func", "pol1", func_from, func_to)
+        func = TF1('func', 'pol2', func_from, func_to)
 
         result = profile.Fit(func, 'SR')
 
-        plot(profile,
-             'profile_upstream_vs_first_layer_%ideg_%iGeV' %
-             (int(file_theta), int(file_energy)),
-             args.note)
+        plot(profile, 'profile_' + plotname, args.note)
 
         if args.theta:
             graph_p0.SetPoint(file_index, file_theta,
@@ -137,6 +165,10 @@ def main():
             graph_p1.SetPoint(file_index, file_theta,
                               result.Get().Parameter(1))
             graph_p1.SetPointError(file_index, 0., result.Get().Error(1))
+
+            graph_chi2.SetPoint(file_index, file_theta,
+                                result.Get().Chi2() / result.Get().Ndf())
+            graph_chi2.SetPointError(file_index, 0., 0.)
         else:
             graph_p0.SetPoint(file_index, file_energy,
                               result.Get().Parameter(0))
@@ -145,6 +177,10 @@ def main():
             graph_p1.SetPoint(file_index, file_energy,
                               result.Get().Parameter(1))
             graph_p1.SetPointError(file_index, 0., result.Get().Error(1))
+
+            graph_chi2.SetPoint(file_index, file_energy,
+                                result.Get().Chi2() / result.Get().Ndf())
+            graph_chi2.SetPointError(file_index, 0., 0.)
 
     if (graph_p0.GetN() < 3):
         print('WARNING: Number of energy values too small, ignoring final ' +
@@ -155,9 +191,16 @@ def main():
               'plots!')
         exit(0)
 
+    plotname = 'graph'
+    if args.upstream_corr:
+        plotname += '_upstream_corr'
+    else:
+        plotname += '_downstream_corr'
+
     if args.theta:
-        plot(graph_p0, 'graph_upstream_corr_theta_param0', args.note)
-        plot(graph_p1, 'graph_upstream_corr_theta_param1', args.note)
+        plot(graph_p0, plotname + '_theta_param0', args.note)
+        plot(graph_p1, plotname + '_theta_param1', args.note)
+        plot(graph_chi2, plotname + '_theta_chi2', args.note)
 
     else:
         func_p0 = TF1("func_p0", "pol1",
@@ -173,8 +216,9 @@ def main():
                       graph_p1.GetPointX(graph_p1.GetN() - 1))
         result_p1 = graph_p1.Fit(func_p1, 'SR')
 
-        plot(graph_p0, 'graph_upstream_corr_param0', args.note)
-        plot(graph_p1, 'graph_upstream_corr_param1', args.note)
+        plot(graph_p0, plotname + '_momentum_param0', args.note)
+        plot(graph_p1, plotname + '_momentum_param1', args.note)
+        plot(graph_chi2, plotname + '_momentum_chi2', args.note)
 
         print('INFO: P0 parameters:')
         print('      P00 = %.3g' % result_p0.Get().Parameter(0) +

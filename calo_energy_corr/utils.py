@@ -23,8 +23,8 @@ def plot(obj, plot_name, plot_notes=[]):
 
         gStyle.SetOptStat(1111)
         gStyle.SetOptFit(1111)
-        # gStyle.SetStatX(0.7)
-        # gStyle.SetStatW(0.25)
+        gStyle.SetStatX(0.5)
+        gStyle.SetStatW(0.2)
         # gStyle.SetStatY(0.5)
         # gStyle.SetStatH(0.2)
 
@@ -35,6 +35,8 @@ def plot(obj, plot_name, plot_notes=[]):
 
         gStyle.SetOptStat(11)
         gStyle.SetOptFit(1111)
+        gStyle.SetStatX(0.5)
+        gStyle.SetStatW(0.2)
 
         draw_options = ''
 
