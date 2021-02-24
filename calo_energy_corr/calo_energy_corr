@@ -8,18 +8,26 @@ from utils import plot, count_bins_with_error
 
 def main():
     '''
-    Calculate upstream correction parameters P00, P01, P10, P11.
+    Fit histograms showing energy deposited in upstream or downstream material
+    vs. energy deposited in calorimeter layer.
     '''
 
     parser = ArgumentParser(description='Yay, calculate upstream parameters!')
     parser.add_argument('-n', '--hist-name', type=str,
                         help='Histogram base name')
-    parser.add_argument('-u', '--upstream-corr', action='store_true',
-                        default=False, help='Calculate upstream correction')
-    parser.add_argument('-d', '--downstream-corr', action='store_true',
-                        default=False, help='Calculate downstream correction')
+    parser.add_argument('-u', '--upstream', action='store_true',
+                        default=False, help='upstream material')
+    parser.add_argument('-d', '--downstream', action='store_true',
+                        default=False, help='downstream material')
     parser.add_argument('-l', '--layer-id', type=int,
-                        help='ID of the first calorimeter layer')
+                        help='ID of the calorimeter layer')
+    parser.add_argument('-f', '--functions', type=str, default=[],
+                        action='append',
+                        help='fit functions (in ROOT notation)')
+    parser.add_argument('-e', '--energy', action='store_true', default=False,
+                        help='Running over energy points')
+    parser.add_argument('-t', '--theta', action='store_true', default=False,
+                        help='Running over theta points')
     parser.add_argument('--note', action='append', default=[],
                         type=str, help='Note to be displayed in the plot')
     parser.add_argument('--rebin-factor', action='append', type=int,
@@ -28,8 +36,6 @@ def main():
     parser.add_argument('--rebin-index', action='append', type=int,
                         default=[],
                         help='Index of the input histogram to be rebined')
-    parser.add_argument('-t', '--theta', action='store_true', default=False,
-                        help='Running over theta points')
 
     required_arguments = parser.add_argument_group('required arguments')
     required_arguments.add_argument('-i', '--input-file',
@@ -37,26 +43,31 @@ def main():
                                     help='Input file path')
     args = parser.parse_args()
 
-    if args.upstream_corr == args.downstream_corr:
-        print('ERROR: Correction type not selected!')
-        print('       Options: -u, --upstream_corr')
-        print('                -d, --downstream_corr')
+    if args.upstream == args.downstream:
+        print('ERROR: Select "upstream" or "downstream"!')
+        exit(1)
+
+    if args.energy == args.theta:
+        print('ERROR: Select "theta" or "energy"!')
         exit(1)
 
     if args.rebin_index and len(args.rebin_factor) != len(args.rebin_index):
         print("ERROR: Rebin indexes and factors does not match")
 
     if not args.layer_id:
-        if args.upstream_corr:
+        if args.upstream:
             args.layer_id = 0
         else:
             args.layer_id = 7
 
     if not args.hist_name:
-        if args.upstream_corr:
+        if args.upstream:
             args.hist_name = 'upstreamEnergy_presamplerEnergy_'
         else:
             args.hist_name = 'downstreamEnergy_energyInLayer_'
+
+    if not args.functions:
+        args.functions.append('pol1')
 
     try:
         with open(args.input_file) as file:
@@ -64,25 +75,13 @@ def main():
     except FileNotFoundError:
         print("ERROR: Input YAML file not found!")
         exit(1)
+    if not input_dict.get('files'):
+        print('ERROR: No file list in input YAML file!')
+        exit(1)
 
-    from ROOT import TGraphErrors, TFile, TF1
+    from ROOT import TFile, TF1
 
-    graph_p0 = TGraphErrors()
-    graph_p0.SetName('graph_p0')
-    graph_p1 = TGraphErrors()
-    graph_p1.SetName('graph_p1')
-    graph_chi2 = TGraphErrors()
-    graph_chi2.SetName('graph_chi2')
-
-    if args.theta:
-        graph_p0.SetTitle(';#theta [deg];P_{0}')
-        graph_p1.SetTitle(';#theta [deg];P_{1}')
-        graph_chi2.SetTitle(';#theta [deg];#Chi^{2}/NDF')
-    else:
-        graph_p0.SetTitle(';E_{cluster} [GeV];P_{0}')
-        graph_p1.SetTitle(';E_{cluster} [GeV];P_{1}')
-        graph_chi2.SetTitle(';E_{cluster} [GeV];#Chi^{2}/NDF')
-
+    result_dict = {}
     for file_index, file_dict in enumerate(input_dict["files"]):
         try:
             file_path = file_dict["path"]
@@ -108,10 +107,6 @@ def main():
             print("         " + file_path)
             exit(1)
 
-        print('INFO: Fitting file: ' + file_path)
-        print('      file energy: %i GeV' % int(file_energy))
-        print('      file theta: %i deg' % int(file_theta))
-
         infile = TFile(file_path, "READ")
         hist = infile.Get(args.hist_name + str(args.layer_id))
         try:
@@ -126,16 +121,25 @@ def main():
 
         hist.SetTitle('')
 
-        if file_index in args.rebin_index:
-            hist.Rebin(args.rebin_factor[args.rebin_index.index(file_index)])
+        print('INFO: Fitting file: ' + file_path)
+        print('      file energy: %i GeV' % int(file_energy))
+        print('      file theta: %i deg' % int(file_theta))
 
-        if args.upstream_corr:
+        if args.upstream:
             plotname = 'upstream_vs_layer'
-        else:
+        if args.downstream:
             plotname = 'downstream_vs_layer'
         plotname += '_%i_%ideg_%iGeV' % (args.layer_id,
                                          int(file_theta),
                                          int(file_energy))
+
+        if args.energy:
+            file_xval = file_energy
+        if args.theta:
+            file_xval = file_theta
+
+        if file_index in args.rebin_index:
+            hist.Rebin(args.rebin_factor[args.rebin_index.index(file_index)])
 
         plot(hist, 'hist_' + plotname, args.note)
 
@@ -147,98 +151,94 @@ def main():
                   'ignoring histogram!')
             continue
 
-        # func_from = hist.GetXaxis().GetBinLowEdge(hist.GetXaxis().GetFirst() + 5)
-        # func_to = hist.GetXaxis().GetBinUpEdge(hist.GetXaxis().GetLast() - 10)
         func_from = hist.GetXaxis().GetBinLowEdge(hist.GetXaxis().GetFirst())
         func_to = hist.GetXaxis().GetBinUpEdge(hist.GetXaxis().GetLast())
-        func = TF1('func', 'pol2', func_from, func_to)
+        func = TF1('func', args.functions[0], func_from, func_to)
 
         result = profile.Fit(func, 'SR')
 
         plot(profile, 'profile_' + plotname, args.note)
 
-        if args.theta:
-            graph_p0.SetPoint(file_index, file_theta,
-                              result.Get().Parameter(0))
-            graph_p0.SetPointError(file_index, 0., result.Get().Error(0))
+        for i in range(func.GetNpar()):
+            param_name = func.GetParName(i)
+            if not result_dict.get(param_name):
+                param_result = {}
+                param_result['x'] = []
+                param_result['y'] = []
+                param_result['y_err'] = []
+                param_result['chi2'] = []
+                if args.upstream:
+                    param_result['plot_name'] = 'graph_upstream'
+                if args.downstream:
+                    param_result['plot_name'] = 'graph_downstream'
+                if args.energy:
+                    param_result['x_label'] = 'E_{cluster} [GeV]'
+                if args.theta:
+                    param_result['x_label'] = '#theta [deg]'
+                param_result['chi2_label'] = '#Chi^{2}/NDF'
+                try:
+                    param_result['fit_function'] = args.functions[1:][i]
+                except IndexError:
+                    param_result['fit_function'] = ''
+                param_result['notes'] = []
+                for note in args.note:
+                    param_result['notes'].append(note)
 
-            graph_p1.SetPoint(file_index, file_theta,
-                              result.Get().Parameter(1))
-            graph_p1.SetPointError(file_index, 0., result.Get().Error(1))
+                result_dict[param_name] = param_result
 
-            graph_chi2.SetPoint(file_index, file_theta,
-                                result.Get().Chi2() / result.Get().Ndf())
-            graph_chi2.SetPointError(file_index, 0., 0.)
-        else:
-            graph_p0.SetPoint(file_index, file_energy,
-                              result.Get().Parameter(0))
-            graph_p0.SetPointError(file_index, 0., result.Get().Error(0))
+            result_dict[param_name]['x'].append(file_xval)
+            result_dict[param_name]['y'].append(result.Get().Parameter(i))
+            result_dict[param_name]['y_err'].append(result.Get().Error(i))
+            result_dict[param_name]['chi2'].append(result.Get().Chi2() /
+                                                   result.Get().Ndf())
 
-            graph_p1.SetPoint(file_index, file_energy,
-                              result.Get().Parameter(1))
-            graph_p1.SetPointError(file_index, 0., result.Get().Error(1))
+    from ROOT import TGraphErrors
+    for param_name, param_dict in result_dict.items():
+        graph_param = TGraphErrors()
+        graph_param.SetName('graph_param_' + param_name)
+        graph_param.GetXaxis().SetTitle(param_dict['x_label'])
+        graph_param.GetYaxis().SetTitle(param_name)
 
-            graph_chi2.SetPoint(file_index, file_energy,
-                                result.Get().Chi2() / result.Get().Ndf())
-            graph_chi2.SetPointError(file_index, 0., 0.)
+        for i in range(len(param_dict['x'])):
+            graph_param.SetPoint(i, param_dict['x'][i], param_dict['y'][i])
+            graph_param.SetPointError(i, 0., param_dict['y_err'][i])
 
-    if (graph_p0.GetN() < 3):
-        print('WARNING: Number of energy values too small, ignoring final ' +
-              'plots!')
-        exit(0)
-    if (graph_p1.GetN() < 3):
-        print('WARNING: Number of energy values too small, ignoring final ' +
-              'plots!')
-        exit(0)
+        if (graph_param.GetN() < 3):
+            print('WARNING: Number of values in parameter graph is too \
+                   small, ignoring final plots!')
+            exit(0)
 
-    plotname = 'graph'
-    if args.upstream_corr:
-        plotname += '_upstream_corr'
-    else:
-        plotname += '_downstream_corr'
+        if param_dict['fit_function']:
+            overhang = 0.1 * abs(param_dict['x'][0] - param_dict['x'][-1])
+            func = TF1("func", param_dict['fit_function'],
+                       param_dict['x'][0] - overhang,
+                       param_dict['x'][-1] + overhang)
+            result = graph_param.Fit(func, "SR")
 
-    if args.theta:
-        plot(graph_p0, plotname + '_theta_param0', args.note)
-        plot(graph_p1, plotname + '_theta_param1', args.note)
-        plot(graph_chi2, plotname + '_theta_chi2', args.note)
+        plotname = param_dict['plot_name'] + '_' + param_name
+        plot(graph_param, plotname, param_dict['notes'])
 
-    else:
-        func_p0 = TF1("func_p0", "pol1",
-                      graph_p0.GetPointX(0),
-                      graph_p0.GetPointX(graph_p0.GetN() - 1))
-        result_p0 = graph_p0.Fit(func_p0, "SR")
-
-        # func_p1 = TF1("func_p1", "[0]+[1]/sqrt(x)",
-        #               graph_p1.GetPointX(0),
-        #               graph_p1.GetPointX(graph_p1.GetN() - 1))
-        func_p1 = TF1("func_p1", "pol1",
-                      graph_p1.GetPointX(0),
-                      graph_p1.GetPointX(graph_p1.GetN() - 1))
-        result_p1 = graph_p1.Fit(func_p1, 'SR')
-
-        plot(graph_p0, plotname + '_momentum_param0', args.note)
-        plot(graph_p1, plotname + '_momentum_param1', args.note)
-        plot(graph_chi2, plotname + '_momentum_chi2', args.note)
-
-        print('INFO: P0 parameters:')
-        print('      P00 = %.3g' % result_p0.Get().Parameter(0) +
-              ' +/- %.3g' % result_p0.Get().Error(0) +
-              ' (%.2g%%)' % abs(100 * result_p0.Get().Error(0) /
-                                result_p0.Get().Parameter(0)))
-        print('      P01 = %.3g' % result_p0.Get().Parameter(1) +
-              ' +/- %.3g' % result_p0.Get().Error(1) +
-              ' (%.2g%%)' % abs(100 * result_p0.Get().Error(1) /
-                                result_p0.Get().Parameter(1)))
-
-        print('INFO: P1 parameters:')
-        print('      P10 = %.3g' % result_p1.Get().Parameter(0) +
-              ' +/- %.3g' % result_p1.Get().Error(0) +
-              ' (%.2g%%)' % abs(100 * result_p1.Get().Error(0) /
-                                result_p1.Get().Parameter(0)))
-        print('      P11 = %.3g' % result_p1.Get().Parameter(1) +
-              ' +/- %.3g' % result_p1.Get().Error(1) +
-              ' (%.2g%%)' % abs(100 * result_p1.Get().Error(1) /
-                                result_p1.Get().Parameter(1)))
+#         plot(graph_chi2, plotname + '_momentum_chi2', args.note)
+#
+#         print('INFO: P0 parameters:')
+#         print('      P00 = %.3g' % result_p0.Get().Parameter(0) +
+#               ' +/- %.3g' % result_p0.Get().Error(0) +
+#               ' (%.2g%%)' % abs(100 * result_p0.Get().Error(0) /
+#                                 result_p0.Get().Parameter(0)))
+#         print('      P01 = %.3g' % result_p0.Get().Parameter(1) +
+#               ' +/- %.3g' % result_p0.Get().Error(1) +
+#               ' (%.2g%%)' % abs(100 * result_p0.Get().Error(1) /
+#                                 result_p0.Get().Parameter(1)))
+#
+#         print('INFO: P1 parameters:')
+#         print('      P10 = %.3g' % result_p1.Get().Parameter(0) +
+#               ' +/- %.3g' % result_p1.Get().Error(0) +
+#               ' (%.2g%%)' % abs(100 * result_p1.Get().Error(0) /
+#                                 result_p1.Get().Parameter(0)))
+#         print('      P11 = %.3g' % result_p1.Get().Parameter(1) +
+#               ' +/- %.3g' % result_p1.Get().Error(1) +
+#               ' (%.2g%%)' % abs(100 * result_p1.Get().Error(1) /
+#                                 result_p1.Get().Parameter(1)))
 
 
 if __name__ == '__main__':
