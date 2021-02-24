@@ -1,0 +1,150 @@
+#!/usr/bin/env python
+from argparse import ArgumentParser
+from sys import exit
+from os import path, mkdir
+from datetime import date
+# from utils import plot, count_bins_with_error
+
+
+def get_histo(inpath, hist_name):
+    from ROOT import TFile
+
+    infile = TFile(inpath, 'READ')
+    hist = infile.Get(hist_name)
+    try:
+        hist.SetDirectory(0)
+    except AttributeError:
+        print('WARNING: Histogram not found!')
+        print('         file path:', inpath)
+        print('         histogram name:', hist_name)
+        exit(1)
+    infile.Close()
+
+    hist.SetTitle('')
+
+    return hist
+
+
+def fit(hist, text, color):
+    from ROOT import TF1
+
+    x_min = hist.GetBinLowEdge(1)
+    x_max = hist.GetBinLowEdge(hist.GetNbinsX())
+    func = TF1('func', 'gaus', x_min, x_max)
+    result = hist.Fit(func, 'SR')
+
+    text += ' = %.2f #pm %.2f' % (result.Parameter(1), result.Parameter(2))
+    text += ' GeV,   #frac{#sigma}{E} = %.2f %%' % (100 * result.Parameter(2) /
+                                                    result.Parameter(1))
+
+    fit_func = hist.GetFunction('func')
+    fit_func.SetLineColor(color)
+
+    return text
+
+
+def get_maximum(hist1, hist2, hist3):
+    arr = []
+    arr.append(hist1.GetMaximum())
+    arr.append(hist2.GetMaximum())
+    arr.append(hist3.GetMaximum())
+
+    return max(arr)
+
+
+def main():
+    '''
+    Plot energy distribution in various sums
+    '''
+
+    parser = ArgumentParser(description='Yay, plot sums!')
+    parser.add_argument('-o', '--output-file', type=str, default='sums.pdf',
+                        help='Note to be displayed in the plot')
+    parser.add_argument('--note', nargs='+', default=[],
+                        type=str, help='Note to be displayed in the plot')
+
+    required_arguments = parser.add_argument_group('required arguments')
+    required_arguments.add_argument('-i', '--input-file',
+                                    type=str, required=True,
+                                    help='Input file path')
+    args = parser.parse_args()
+
+    from ROOT import gROOT, gStyle, gPad, TCanvas, TLegend, TPaveText
+    from ROOT import kRed, kBlue, kGreen
+    gROOT.SetBatch(True)
+
+    if not path.isfile(args.input_file):
+        print("WARNING: Input ROOT file not found!")
+        print("         " + args.input_file)
+        exit(1)
+
+    canvas = TCanvas('canvas', 'Canvas', 350, 350)
+    gPad.SetTopMargin(.05)
+    gPad.SetRightMargin(.05)
+    gStyle.SetOptStat(0)
+
+    calo_energy = get_histo(args.input_file, 'energyInCalo')
+    calo_energy.SetLineColor(kRed+2)
+    calo_energy.SetMarkerColor(kRed+2)
+    calo_energy.SetLineWidth(2)
+
+    calo_and_cryo_energy = get_histo(args.input_file, 'energyInCaloAndCryo')
+    calo_and_cryo_energy.SetLineColor(kBlue+2)
+    calo_and_cryo_energy.SetMarkerColor(kBlue+2)
+    calo_and_cryo_energy.SetLineWidth(2)
+
+    calo_and_corr_energy = get_histo(args.input_file,
+                                     'energyInCaloAndUpDownCorr')
+    calo_and_corr_energy.SetLineColor(kGreen+3)
+    calo_and_corr_energy.SetMarkerColor(kGreen+3)
+    calo_and_corr_energy.SetLineWidth(2)
+
+    calo_energy.Rebin(5)
+    calo_and_cryo_energy.Rebin(5)
+    calo_and_corr_energy.Rebin(5)
+
+    result_calo_energy = fit(calo_energy, 'E_{calo}', kRed-4)
+    result_calo_and_cryo_energy = fit(calo_and_cryo_energy,
+                                      'E_{calo+cryo}', kBlue-4)
+    result_calo_and_corr_energy = fit(calo_and_corr_energy,
+                                      'E_{calo+corr}', kGreen-3)
+
+    legend = TLegend(.12, .6, .6, .94)
+    legend.SetBorderSize(0)
+    legend.SetFillStyle(0)
+    legend.SetFillColor(0)
+    legend.AddEntry(calo_energy, result_calo_energy, 'LEP')
+    legend.AddEntry(calo_and_cryo_energy, result_calo_and_cryo_energy, 'LEP')
+    legend.AddEntry(calo_and_corr_energy, result_calo_and_corr_energy, 'LEP')
+
+    note = TPaveText(.12, .4, .6, .6, "brNDC")
+    note.SetFillStyle(0)
+    note.SetFillColor(0)
+    note.SetBorderSize(0)
+    note.SetTextColor(1)
+    note.SetTextFont(42)
+    note.SetTextAlign(11)
+    for note_text in args.note:
+        note.AddText(note_text)
+
+    hist_max = get_maximum(calo_energy,
+                           calo_and_cryo_energy, calo_and_corr_energy)
+    calo_energy.SetMaximum(hist_max)
+    calo_and_cryo_energy.SetMaximum(hist_max)
+    calo_and_corr_energy.SetMaximum(hist_max)
+
+    calo_energy.Draw('')
+    calo_and_cryo_energy.Draw('SAME')
+    calo_and_corr_energy.Draw('SAME')
+    legend.Draw()
+    note.Draw()
+
+    today = date.today()
+    outpath = 'output/' + today.strftime('%Y-%b-%d/')
+    if not path.exists(outpath):
+        mkdir(outpath)
+    canvas.Print(outpath + args.output_file)
+
+
+if __name__ == '__main__':
+    main()
