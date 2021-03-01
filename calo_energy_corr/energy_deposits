@@ -56,10 +56,12 @@ def main():
                                     help='Input file path')
     args = parser.parse_args()
 
-    from ROOT import gStyle, TCanvas, TPaveText
-    gStyle.SetOptStat(10)
-    gStyle.SetOptFit(1)
+    from ROOT import gROOT, gPad, TCanvas, TPaveText
+    gROOT.SetBatch(True)
+
     canvas = TCanvas('canvas', 'Canvas', 350, 350)
+    gPad.SetLeftMargin(.12)
+    gPad.SetRightMargin(.05)
 
     note = TPaveText(.3, .7, .5, .85, "brNDC")
     note.SetFillStyle(0)
@@ -69,58 +71,66 @@ def main():
     note.SetTextFont(42)
     note.SetTextAlign(11)
     note.AddText('FCC-ee')
-    note.AddText('e^{--}, 50 GeV')
+    note.AddText('e^{--}, 100 GeV')
     note.AddText('#theta = #pi/2')
+    note.AddText('large back cryostat')
 
-    sumEinLayers = get_histogram(args.input_file, 'sumEinLayers')
-
-    sumEinLayers.Rebin(4)
-
-    fit_histogram(sumEinLayers)
-
-    sumEinLayers.Draw()
-    note.Draw()
-    canvas.Print('sumEinLayers.pdf')
+    energyInCalo = get_histogram(args.input_file, 'energyInCalo')
+    energyInCalo.Rebin(4)
+    # fit_histogram(energyInCalo)
+    energyInCalo.SetLineWidth(2)
+    energyInCalo.GetXaxis().SetRangeUser(80, 103)
+    energyInCalo.Draw('HIST')
+    # note.Draw()
+    canvas.Print('energyInCalo.pdf')
 
     ###
     energyInCryo = get_histogram(args.input_file, 'energyInCryo')
     energyInCryo.Rebin(4)
-    fit_histogram(energyInCryo)
-    energyInCryo.Draw()
-    note.Draw()
+    # fit_histogram(energyInCryo)
+    energyInCryo.SetLineWidth(2)
+    energyInCryo.GetXaxis().SetRangeUser(0, 15)
+    energyInCryo.Draw('HIST')
+    # note.Draw()
     canvas.Print('energyInCryo.pdf')
 
     ###
     energyInCryoFront = get_histogram(args.input_file, 'energyInCryoFront')
     energyInCryoFront.Rebin(4)
-    fit_histogram(energyInCryoFront)
-    energyInCryoFront.Draw()
-    note.Draw()
+    # fit_histogram(energyInCryoFront)
+    energyInCryoFront.SetLineWidth(2)
+    # energyInCryoFront.GetXaxis().SetRangeUser(0, 15)
+    energyInCryoFront.Draw('HIST')
+    # note.Draw()
     canvas.Print('energyInCryoFront.pdf')
 
     ###
     energyInCryoBack = get_histogram(args.input_file, 'energyInCryoBack')
     energyInCryoBack.Rebin(4)
-    fit_histogram(energyInCryoBack)
-    energyInCryoBack.Draw()
-    note.Draw()
+    # fit_histogram(energyInCryoBack)
+    energyInCryoBack.SetLineWidth(2)
+    energyInCryoBack.GetXaxis().SetRangeUser(0, 15)
+    energyInCryoBack.Draw('HIST')
+    # note.Draw()
     canvas.Print('energyInCryoBack.pdf')
 
     ###
     energyInCryoSides = get_histogram(args.input_file, 'energyInCryoSides')
     energyInCryoSides.Rebin(4)
     # fit_histogram(energyInCryoSides)
-    energyInCryoSides.Draw()
-    note.Draw()
+    energyInCryoSides.SetLineWidth(2)
+    energyInCryoSides.Draw('HIST')
+    # note.Draw()
     canvas.Print('energyInCryoSides.pdf')
 
     ###
     energyInCryoLArBathFront = get_histogram(args.input_file,
                                              'energyInCryoLArBathFront')
     energyInCryoLArBathFront.Rebin(4)
-    fit_histogram(energyInCryoLArBathFront)
-    energyInCryoLArBathFront.Draw()
-    note.Draw()
+    # fit_histogram(energyInCryoLArBathFront)
+    energyInCryoLArBathFront.SetLineWidth(2)
+    energyInCryoLArBathFront.Draw('HIST')
+    # note.Draw()
     canvas.Print('energyInCryoLArBathFront.pdf')
 
     ###
@@ -128,7 +138,8 @@ def main():
                                             'energyInCryoLArBathBack')
     energyInCryoLArBathBack.Rebin(4)
     # fit_histogram(energyInCryoLArBathBack)
-    energyInCryoLArBathBack.Draw()
+    energyInCryoLArBathBack.SetLineWidth(2)
+    energyInCryoLArBathBack.Draw('HIST')
     note.Draw()
     canvas.Print('energyInCryoLArBathBack.pdf')
 

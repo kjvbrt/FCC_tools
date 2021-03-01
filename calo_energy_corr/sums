@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import yaml
 from argparse import ArgumentParser
 from sys import exit
 from os import path, mkdir
@@ -33,68 +34,55 @@ def fit(hist, text, color):
     func = TF1('func', 'gaus', x_min, x_max)
     result = hist.Fit(func, 'SR')
 
-    text += ' = %.2f #pm %.2f' % (result.Parameter(1), result.Parameter(2))
-    text += ' GeV,   #frac{#sigma}{E} = %.2f %%' % (100 * result.Parameter(2) /
-                                                    result.Parameter(1))
+    result_dict = {}
+    result_dict['name'] = hist.GetName()
+    result_dict['mean'] = result.Parameter(1)
+    result_dict['sigma'] = result.Parameter(2)
+    result_dict['resolution'] = 100 * result.Parameter(2) / result.Parameter(1)
+
+    text += ' = %.2f #pm %.2f' % (result_dict['mean'], result_dict['sigma'])
+    text += ' GeV,   #frac{#sigma}{E} = %.2f %%' % (result_dict['resolution'])
 
     fit_func = hist.GetFunction('func')
     fit_func.SetLineColor(color)
 
-    return text
+    return [result_dict, text]
 
 
-def get_maximum(hist1, hist2, hist3):
+def set_maximum(hist1, hist2, hist3):
     arr = []
     arr.append(hist1.GetMaximum())
     arr.append(hist2.GetMaximum())
     arr.append(hist3.GetMaximum())
 
-    return max(arr)
+    hist_max = 1.7 * max(arr)
+
+    hist1.SetMaximum(hist_max)
+    hist2.SetMaximum(hist_max)
+    hist3.SetMaximum(hist_max)
 
 
-def main():
-    '''
-    Plot energy distribution in various sums
-    '''
-
-    parser = ArgumentParser(description='Yay, plot sums!')
-    parser.add_argument('-o', '--output-file', type=str, default='sums.pdf',
-                        help='Note to be displayed in the plot')
-    parser.add_argument('--note', nargs='+', default=[],
-                        type=str, help='Note to be displayed in the plot')
-
-    required_arguments = parser.add_argument_group('required arguments')
-    required_arguments.add_argument('-i', '--input-file',
-                                    type=str, required=True,
-                                    help='Input file path')
-    args = parser.parse_args()
-
-    from ROOT import gROOT, gStyle, gPad, TCanvas, TLegend, TPaveText
+def plot_sum(input_file, output_file, notes):
+    from ROOT import gStyle, gPad, TCanvas, TLegend, TPaveText
     from ROOT import kRed, kBlue, kGreen
-    gROOT.SetBatch(True)
-
-    if not path.isfile(args.input_file):
-        print("WARNING: Input ROOT file not found!")
-        print("         " + args.input_file)
-        exit(1)
 
     canvas = TCanvas('canvas', 'Canvas', 350, 350)
+    gPad.SetLeftMargin(.12)
     gPad.SetTopMargin(.05)
     gPad.SetRightMargin(.05)
     gStyle.SetOptStat(0)
 
-    calo_energy = get_histo(args.input_file, 'energyInCalo')
+    calo_energy = get_histo(input_file, 'energyInCalo')
     calo_energy.SetLineColor(kRed+2)
     calo_energy.SetMarkerColor(kRed+2)
     calo_energy.SetLineWidth(2)
 
-    calo_and_cryo_energy = get_histo(args.input_file, 'energyInCaloAndCryo')
+    calo_and_cryo_energy = get_histo(input_file, 'energyInCaloAndCryo')
     calo_and_cryo_energy.SetLineColor(kBlue+2)
     calo_and_cryo_energy.SetMarkerColor(kBlue+2)
     calo_and_cryo_energy.SetLineWidth(2)
 
-    calo_and_corr_energy = get_histo(args.input_file,
-                                     'energyInCaloAndUpDownCorr')
+    calo_and_corr_energy = get_histo(input_file, 'energyInCaloAndUpDownCorr')
     calo_and_corr_energy.SetLineColor(kGreen+3)
     calo_and_corr_energy.SetMarkerColor(kGreen+3)
     calo_and_corr_energy.SetLineWidth(2)
@@ -108,30 +96,32 @@ def main():
                                       'E_{calo+cryo}', kBlue-4)
     result_calo_and_corr_energy = fit(calo_and_corr_energy,
                                       'E_{calo+corr}', kGreen-3)
+    result_dict = {}
+    result_dict['calo_energy'] = result_calo_energy[0]
+    result_dict['calo_and_cryo_energy'] = result_calo_and_cryo_energy[0]
+    result_dict['calo_and_corr_energy'] = result_calo_and_corr_energy[0]
 
-    legend = TLegend(.12, .6, .6, .94)
+    legend = TLegend(.13, .7, .8, .94)
     legend.SetBorderSize(0)
     legend.SetFillStyle(0)
     legend.SetFillColor(0)
-    legend.AddEntry(calo_energy, result_calo_energy, 'LEP')
-    legend.AddEntry(calo_and_cryo_energy, result_calo_and_cryo_energy, 'LEP')
-    legend.AddEntry(calo_and_corr_energy, result_calo_and_corr_energy, 'LEP')
+    legend.AddEntry(calo_energy, result_calo_energy[1], 'LEP')
+    legend.AddEntry(calo_and_cryo_energy, result_calo_and_cryo_energy[1],
+                    'LEP')
+    legend.AddEntry(calo_and_corr_energy, result_calo_and_corr_energy[1],
+                    'LEP')
 
-    note = TPaveText(.12, .4, .6, .6, "brNDC")
+    note = TPaveText(.13, .55, .6, .7, "brNDC")
     note.SetFillStyle(0)
     note.SetFillColor(0)
     note.SetBorderSize(0)
     note.SetTextColor(1)
     note.SetTextFont(42)
     note.SetTextAlign(11)
-    for note_text in args.note:
+    for note_text in notes:
         note.AddText(note_text)
 
-    hist_max = get_maximum(calo_energy,
-                           calo_and_cryo_energy, calo_and_corr_energy)
-    calo_energy.SetMaximum(hist_max)
-    calo_and_cryo_energy.SetMaximum(hist_max)
-    calo_and_corr_energy.SetMaximum(hist_max)
+    set_maximum(calo_energy, calo_and_cryo_energy, calo_and_corr_energy)
 
     calo_energy.Draw('')
     calo_and_cryo_energy.Draw('SAME')
@@ -143,7 +133,284 @@ def main():
     outpath = 'output/' + today.strftime('%Y-%b-%d/')
     if not path.exists(outpath):
         mkdir(outpath)
-    canvas.Print(outpath + args.output_file)
+    canvas.Print(outpath + 'sums_' + output_file + '.pdf')
+
+    return result_dict
+
+
+def plot_summary(fit_dict, outpath, notes):
+    from ROOT import gStyle, gPad, TCanvas, TGraphErrors, TGraph, TLine
+    from ROOT import TLegend, TPaveText, TF1
+    from ROOT import kRed, kBlue, kGreen
+
+    canvas = TCanvas('canvas', 'Canvas', 350, 350)
+    gPad.SetLeftMargin(.12)
+    gPad.SetTopMargin(.05)
+    gPad.SetRightMargin(.05)
+    gStyle.SetOptStat(0)
+
+    graph_calo_energy = TGraphErrors()
+    graph_calo_energy.SetName('graph_calo_energy')
+    graph_calo_and_cryo_energy = TGraphErrors()
+    graph_calo_and_cryo_energy.SetName('graph_calo_and_cryo_energy')
+    graph_calo_and_corr_energy = TGraphErrors()
+    graph_calo_and_corr_energy.SetName('graph_calo_and_corr_energy')
+
+    graph_calo_res = TGraph()
+    graph_calo_res.SetName('graph_calo_res')
+    graph_calo_and_cryo_res = TGraph()
+    graph_calo_and_cryo_res.SetName('graph_calo_and_cryo_res')
+    graph_calo_and_corr_res = TGraph()
+    graph_calo_and_corr_res.SetName('graph_calo_and_corr_res')
+
+    shim = .8
+    for energy, result in fit_dict.items():
+        graph_calo_energy.SetPoint(
+                graph_calo_energy.GetN(),
+                energy - shim, result['calo_energy']['mean'] / energy)
+        graph_calo_energy.SetPointError(
+                graph_calo_energy.GetN() - 1,
+                0., result['calo_energy']['sigma'] / energy)
+
+        graph_calo_and_cryo_energy.SetPoint(
+                graph_calo_and_cryo_energy.GetN(),
+                energy, result['calo_and_cryo_energy']['mean'] / energy)
+        graph_calo_and_cryo_energy.SetPointError(
+                graph_calo_and_cryo_energy.GetN() - 1,
+                0., result['calo_and_cryo_energy']['sigma'] / energy)
+
+        graph_calo_and_corr_energy.SetPoint(
+                graph_calo_and_corr_energy.GetN(),
+                energy + shim, result['calo_and_corr_energy']['mean'] / energy)
+        graph_calo_and_corr_energy.SetPointError(
+                graph_calo_and_corr_energy.GetN() - 1,
+                0., result['calo_and_corr_energy']['sigma'] / energy)
+
+        graph_calo_res.SetPoint(
+                graph_calo_res.GetN(),
+                energy, result['calo_energy']['resolution'])
+
+        graph_calo_and_cryo_res.SetPoint(
+                graph_calo_and_cryo_res.GetN(),
+                energy, result['calo_and_cryo_energy']['resolution'])
+
+        graph_calo_and_corr_res.SetPoint(
+                graph_calo_and_corr_res.GetN(),
+                energy, result['calo_and_corr_energy']['resolution'])
+
+    graph_calo_energy.SetLineColor(kRed + 2)
+    graph_calo_energy.SetMarkerColor(kRed + 2)
+    graph_calo_energy.SetMarkerStyle(20)
+    graph_calo_energy.SetMarkerSize(.4)
+
+    graph_calo_and_cryo_energy.SetLineColor(kBlue + 2)
+    graph_calo_and_cryo_energy.SetMarkerColor(kBlue + 2)
+    graph_calo_and_cryo_energy.SetMarkerStyle(34)
+    graph_calo_and_cryo_energy.SetMarkerSize(.5)
+
+    graph_calo_and_corr_energy.SetLineColor(kGreen + 3)
+    graph_calo_and_corr_energy.SetMarkerColor(kGreen + 3)
+    graph_calo_and_corr_energy.SetMarkerStyle(47)
+    graph_calo_and_corr_energy.SetMarkerSize(.5)
+
+    graph_calo_energy.SetTitle(';E_{cluster} [GeV];E / E_{cluster}')
+    graph_calo_energy.GetXaxis().SetTitleOffset(1.3)
+
+    legend = TLegend(.6, .8, .95, .94)
+    legend.SetBorderSize(0)
+    legend.SetFillStyle(0)
+    legend.SetFillColor(0)
+    legend.AddEntry(graph_calo_energy, 'E_{calo}', 'LEP')
+    legend.AddEntry(graph_calo_and_cryo_energy, 'E_{calo+cryo}', 'LEP')
+    legend.AddEntry(graph_calo_and_corr_energy, 'E_{calo+corr}', 'LEP')
+
+    note = TPaveText(.6, .65, .95, .78, "brNDC")
+    note.SetFillStyle(0)
+    note.SetFillColor(0)
+    note.SetBorderSize(0)
+    note.SetTextColor(1)
+    note.SetTextFont(42)
+    note.SetTextAlign(11)
+    for note_text in notes:
+        note.AddText(note_text)
+
+    graph_calo_energy.SetMaximum(1.07)
+    graph_calo_energy.SetMinimum(0.93)
+
+    graph_calo_energy.Draw('APE')
+    graph_calo_and_cryo_energy.Draw('SAME PE')
+    graph_calo_and_corr_energy.Draw('SAME PE')
+    legend.Draw()
+    note.Draw()
+
+    line = TLine(graph_calo_energy.GetXaxis().GetXmin(), 1.,
+                 graph_calo_energy.GetXaxis().GetXmax(), 1.)
+    line.SetLineStyle(7)
+    line.Draw()
+
+    today = date.today()
+    outpath = 'output/' + today.strftime('%Y-%b-%d/summary_energy_') + outpath
+    canvas.Print(outpath + '.pdf')
+
+    last_index = graph_calo_and_corr_res.GetN() - 1
+    func = TF1('res_func', 'sqrt([0]*[0] + pow([1]/sqrt(x), 2))',
+               graph_calo_and_corr_res.GetPointX(0),
+               graph_calo_and_corr_res.GetPointX(last_index))
+    fit_result = graph_calo_and_corr_res.Fit(func, 'RS')
+    fit_func = graph_calo_and_corr_res.GetFunction('res_func')
+    fit_func.SetLineColor(kGreen + 3)
+    fit_func.SetLineStyle(7)
+
+    func1 = TF1('res_func1', 'sqrt([0]*[0] + pow([1]/sqrt(x) , 2))',
+                graph_calo_res.GetPointX(0),
+                graph_calo_res.GetPointX(last_index))
+    fit_result1 = graph_calo_res.Fit(func1, 'RS')
+    fit_func1 = graph_calo_res.GetFunction('res_func1')
+    fit_func1.SetLineColor(kRed + 2)
+    fit_func1.SetLineStyle(7)
+
+    graph_calo_res.SetLineColor(kRed + 2)
+    graph_calo_res.SetMarkerColor(kRed + 2)
+    graph_calo_res.SetLineWidth(2)
+    graph_calo_res.SetMarkerStyle(20)
+    graph_calo_res.SetMarkerSize(.4)
+
+    graph_calo_and_cryo_res.SetLineColor(kBlue + 2)
+    graph_calo_and_cryo_res.SetMarkerColor(kBlue + 2)
+    graph_calo_and_cryo_res.SetLineWidth(2)
+    graph_calo_and_cryo_res.SetMarkerStyle(34)
+    graph_calo_and_cryo_res.SetMarkerSize(.5)
+
+    graph_calo_and_corr_res.SetLineColor(kGreen + 3)
+    graph_calo_and_corr_res.SetMarkerColor(kGreen + 3)
+    graph_calo_and_corr_res.SetLineWidth(2)
+    graph_calo_and_corr_res.SetMarkerStyle(47)
+    graph_calo_and_corr_res.SetMarkerSize(.5)
+
+    graph_calo_res.SetTitle(';E_{cluster} [GeV];#sigma / E [%]')
+    graph_calo_res.GetXaxis().SetTitleOffset(1.3)
+
+    legend = TLegend(.6, .8, .95, .94)
+    legend.SetBorderSize(0)
+    legend.SetFillStyle(0)
+    legend.SetFillColor(0)
+    legend.AddEntry(graph_calo_res, 'E_{calo}', 'LEP')
+    legend.AddEntry(graph_calo_and_cryo_res, 'E_{calo+cryo}', 'LEP')
+    legend.AddEntry(graph_calo_and_corr_res, 'E_{calo+corr}', 'LEP')
+
+    note = TPaveText(.6, .65, .95, .78, "brNDC")
+    note.SetFillStyle(0)
+    note.SetFillColor(0)
+    note.SetBorderSize(0)
+    note.SetTextColor(1)
+    note.SetTextFont(42)
+    note.SetTextAlign(11)
+    for note_text in notes:
+        note.AddText(note_text)
+
+    fit_note = TPaveText(.14, .1, .4, .35, "brNDC")
+    fit_note.SetFillStyle(0)
+    fit_note.SetFillColor(0)
+    fit_note.SetBorderSize(0)
+    fit_note.SetTextColor(kGreen + 3)
+    fit_note.SetTextFont(42)
+    fit_note.SetTextAlign(11)
+    fit_note.AddText('#sqrt{p_{0}^{2} + (p_{1} / #sqrt{E_{cluster}} )^{2}}')
+    fit_note.AddText('p_{0} = %.2f #pm  %.2f' % (fit_result.Parameter(0),
+                                                 fit_result.ParError(0)))
+    fit_note.AddText('p_{1} = %.2f #pm  %.2f' % (fit_result.Parameter(1),
+                                                 fit_result.ParError(1)))
+
+    fit_note1 = TPaveText(.24, .7, .5, .94, "brNDC")
+    fit_note1.SetFillStyle(0)
+    fit_note1.SetFillColor(0)
+    fit_note1.SetBorderSize(0)
+    fit_note1.SetTextColor(kRed + 2)
+    fit_note1.SetTextFont(42)
+    fit_note1.SetTextAlign(11)
+    fit_note1.AddText('#sqrt{p_{0}^{2} + (p_{1} / #sqrt{E_{cluster}} )^{2}}')
+    fit_note1.AddText('p_{0} = %.2f #pm  %.2f' % (fit_result1.Parameter(0),
+                                                  fit_result1.ParError(0)))
+    fit_note1.AddText('p_{1} = %.2f #pm  %.2f' % (fit_result1.Parameter(1),
+                                                  fit_result1.ParError(1)))
+
+    graph_calo_res.SetMaximum(2.8)
+    graph_calo_res.SetMinimum(0.5)
+
+    graph_calo_res.Draw('APL')
+    graph_calo_and_cryo_res.Draw('SAME PL')
+    graph_calo_and_corr_res.Draw('SAME PL')
+    legend.Draw()
+    note.Draw()
+    fit_note.Draw()
+    fit_note1.Draw()
+
+    canvas.Print(outpath.replace('summary_energy_', 'summary_res_') + '.pdf')
+
+
+def main():
+    '''
+    Plot energy distribution in various sums
+    '''
+
+    parser = ArgumentParser(description='Yay, plot sums!')
+    parser.add_argument('-o', '--output-file', type=str, default='sums.pdf',
+                        help='Note to be displayed in the plot')
+    parser.add_argument('--notes', nargs='+', default=[],
+                        type=str, help='Note to be displayed in the plot')
+
+    required_arguments = parser.add_argument_group('required arguments')
+    required_arguments.add_argument('-i', '--input-file',
+                                    type=str, required=True,
+                                    help='Input file path')
+    args = parser.parse_args()
+
+    from ROOT import gROOT
+    gROOT.SetBatch(True)
+
+    try:
+        with open(args.input_file) as file:
+            input_dict = yaml.full_load(file)
+    except FileNotFoundError:
+        print("ERROR: Input YAML file not found!")
+        exit(1)
+    if not input_dict.get('files'):
+        print('ERROR: No file list in input YAML file!')
+        exit(1)
+
+    fit_dict = {}
+    for file_index, file_dict in enumerate(input_dict["files"]):
+        try:
+            inpath = file_dict["path"]
+        except KeyError:
+            print("WARNING: File path not found!")
+            print("         file index: ", file_index)
+            exit(1)
+        try:
+            energy = file_dict["energy"]
+        except KeyError:
+            print("WARNING: Energy of the file not found!")
+            print("         file index: ", file_index)
+            exit(1)
+        try:
+            theta = file_dict["theta"]
+        except KeyError:
+            print("WARNING: Theta of the file not found!")
+            print("         file index: ", file_index)
+            exit(1)
+
+        if not path.isfile(inpath):
+            print("WARNING: Input ROOT file not found!")
+            print("         " + inpath)
+            exit(1)
+
+        results = plot_sum(inpath,
+                           args.output_file + '_%ideg_%igev' % (theta,
+                                                                energy),
+                           args.notes + ['e^{-}, %i GeV' % energy])
+        fit_dict[energy] = results
+
+    plot_summary(fit_dict, args.output_file, args.notes)
 
 
 if __name__ == '__main__':
